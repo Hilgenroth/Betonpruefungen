@@ -404,7 +404,7 @@ textarea.field-textarea:focus { border-color: var(--red); }
 }
 @media screen and (max-width: 820px) {
   .pk-row-label { min-width: 150px; font-size: 10.5px !important; }
-  .pk-table input, .pk-table select { font-size: 15px !important; padding: 7px 0; }
+  .pk-table input, .pk-table select { font-size: 16px !important; padding: 9px 4px; min-height: 40px; }
 }
 </style>
 
@@ -449,7 +449,7 @@ textarea.field-textarea:focus { border-color: var(--red); }
         </div>
         <div class="bk-meta">
           <div class="bk-meta-item">Prüf-Nr. <input id="bericht-nr" readonly style="opacity:0.8;" /></div>
-          <div class="bk-meta-item">Blatt <input id="blatt" type="number" min="1" placeholder="1" style="width:60px;" /></div>
+          <div class="bk-meta-item">Blatt <input id="blatt" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="1" style="width:60px;" /></div>
         </div>
       </div>
     </div>
@@ -534,6 +534,7 @@ textarea.field-textarea:focus { border-color: var(--red); }
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase, ref, set, get, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   // ⚠ Config aus dem Projekt "betonpruefung-7c1f6". Die databaseURL wurde nicht mitgeliefert
   //   (dein Config-Snippet enthielt keine Realtime-Database-URL) — sie wurde nach dem gleichen
@@ -552,6 +553,7 @@ textarea.field-textarea:focus { border-color: var(--red); }
 
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
+  const auth = getAuth(app);
   const BASIS = 'betonpruefungen';
 
   window.fbBeton = {
@@ -561,9 +563,20 @@ textarea.field-textarea:focus { border-color: var(--red); }
     live:      (cb) => onValue(ref(db, BASIS), s => cb(s.exists() ? s.val() : {})),
     stammdatenSpeichern: (feld, liste) => set(ref(db, 'stammdaten/' + feld), liste),
     stammdatenLaden:     (feld) => get(ref(db, 'stammdaten/' + feld)).then(s => s.exists() ? s.val() : []),
-    bereit: true
+    bereit: false
   };
-  window.dispatchEvent(new Event('firebase-bereit'));
+
+  // Anonyme Anmeldung — nötig, weil die Sicherheitsregeln "auth != null" verlangen.
+  // Ohne das würden alle Lese-/Schreibzugriffe von der Datenbank blockiert.
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      window.fbBeton.bereit = true;
+      window.dispatchEvent(new Event('firebase-bereit'));
+    }
+  });
+  signInAnonymously(auth).catch((err) => {
+    console.error('Anmeldefehler:', err);
+  });
 </script>
 
 <script>
@@ -675,7 +688,10 @@ function buildPkBody() {
       } else if (feld.type === 'date') {
         html += `<td><input type="date" id="${cellId}" onchange="berechnePK('${colId}')" /></td>`;
       } else if (feld.type === 'number') {
-        html += `<td><input type="number" step="${feld.step || 1}" id="${cellId}" placeholder="—" oninput="berechnePK('${colId}')" /></td>`;
+        const dezimal = (feld.step || 1) < 1;
+        const mode = dezimal ? 'decimal' : 'numeric';
+        const pattern = dezimal ? '[0-9]*[.,]?[0-9]*' : '[0-9]*';
+        html += `<td><input type="text" inputmode="${mode}" pattern="${pattern}" id="${cellId}" placeholder="—" oninput="berechnePK('${colId}')" /></td>`;
       } else {
         html += `<td><input type="text" id="${cellId}" placeholder="${feld.placeholder || '—'}" /></td>`;
       }
